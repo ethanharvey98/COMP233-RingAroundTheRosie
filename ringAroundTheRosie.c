@@ -2,18 +2,33 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#define MILLION 1000000
+#define TRIALS 10
+
 int main(int argc, char** argv) {
 
-	const int MILLION = 1000000;
-	const int SIZE = 1000;
+	const int SIZES[12] = {1000, 50000, 100000, 200000, 300000, 400000, 500000, 600000, 700000, 800000, 900000, 1000000};
+
+	// Rank
+	int world_rank;
+	// Size
+	int world_size;
+	// Time variables
+	double start, stop, total;
+	// Fastest and average time
+	double fastest, average = 0;
+	// Slowest time
+	double slowest;
+	// Array of times
+	double times[TRIALS];
+	// Message to be passed around
+	double* message = (double*)malloc(MILLION * sizeof(double));
 
     // Initialize MPI
 	MPI_Init(NULL, NULL);
 
 	// Get rank and size
-	int world_rank;
 	MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
-	int world_size;
 	MPI_Comm_size(MPI_COMM_WORLD, &world_size);
 
 	// If size is less than 2
@@ -22,63 +37,96 @@ int main(int argc, char** argv) {
 		MPI_Abort(MPI_COMM_WORLD, 1);
 	}
 
-	double* message = (double*)malloc(MILLION * sizeof(double));
+	int size;
+	for (size = 0; size < 12; size++) {
 
+		int trial;
+		for (trial = 0; trial < TRIALS; trial++) {
 
-	if (world_rank == 0) {
-		for (int i = 0; i < SIZE; i++) {
-			message[i] = 0.00;
+			if (world_rank == 0) {
+				int i;
+				for (i = 0; i < SIZES[size]; i++) {
+					message[i] = SIZES[size] + trial;
+				}
+
+				start = MPI_Wtime();
+
+				MPI_Send(
+					message, // data
+					SIZES[size]+1, // count
+					MPI_DOUBLE, // datatype
+					world_rank+1, // destination
+					0, // tag
+					MPI_COMM_WORLD); // communicator
+
+				MPI_Recv(
+					message, // data
+					SIZES[size]+1, // count
+					MPI_DOUBLE, // datatype
+					world_size-1, // source
+					0, // tag
+					MPI_COMM_WORLD, // communicator
+					MPI_STATUS_IGNORE);
+
+				stop = MPI_Wtime();
+				total = stop - start;
+
+				for (i = 0; i < SIZES[size]; i++) {
+					/*
+					if (message[i] != SIZES[size] + trial) {
+						// TODO: Make sure messages are the same
+						printf("Messages are not the same")
+					}
+					*/
+					// Make sure the messages are the same
+				}
+
+				times[trial] = total/world_size;
+			}
+			else {
+
+				MPI_Recv(
+					message, // data
+					SIZES[size]+1, // count
+					MPI_DOUBLE, // datatype
+					(world_rank-1) % world_size, // source
+					0, // tag
+					MPI_COMM_WORLD, // communicator
+					MPI_STATUS_IGNORE);
+
+				MPI_Send(
+					message, // data
+					SIZES[size]+1, // count
+					MPI_DOUBLE, // datatype
+					(world_rank+1) % world_size, // destination
+					0, // tag
+					MPI_COMM_WORLD); // communicator
+
+			}
 		}
 
-		// Time variables
-		double start, stop, total;
+		if (world_rank == 0) {
+			// Initialize slowest to the first time
+			slowest = times[0];
 
-		start = MPI_Wtime();
-
-		MPI_Send(
-			&message, // data
-			sizeof(message), // count
-			MPI_INT, // datatype
-			1, // destination
-			0, // tag
-			MPI_COMM_WORLD); // communicator
-
-		MPI_Recv(
-			&message, // data
-			sizeof(message), // count
-			MPI_INT, // datatype
-			(world_size-1), // source
-			0, // tag
-			MPI_COMM_WORLD, // communicator
-			MPI_STATUS_IGNORE);
-
-		stop = WPI_Wtime();
-		total = stop - start;
-
-		printf(total);
-
-	}
-	else {
-
-		MPI_Recv(
-			&message, // data
-			sizeof(message), // count
-			MPI_INT, // datatype
-			world_rank-1, // source
-			0, // tag
-			MPI_COMM_WORLD, // communicator
-			MPI_STATUS_IGNORE);
-
-		MPI_Send(
-			&message, // data
-			sizeof(message), // count
-			MPI_INT, // datatype
-			world_rank % world_size, // destination
-			0, // tag
-			MPI_COMM_WORLD); // communicator
-
+			// Set fastest, slowest, and average
+			int i;
+			for (i = 0; i < TRIALS; i++) {
+				if (times[i] > fastest) {
+					fastest = times[i];
+				}
+				if (times[i] < slowest) {
+					slowest = times[i];
+				}
+				average += times[i];
+			}
+			// TODO: Bandwidth and Latency stuff
+			average = average/TRIALS;
+			printf("%d, %f, %f, %f\n", 8*SIZES[size] ,fastest, slowest, average);
+		}
 	}
 
 	free(message);
 	MPI_Finalize();
+	return 0;
 }
