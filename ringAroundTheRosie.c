@@ -1,3 +1,6 @@
+// Ethan Harvey ~ COMP 233 ~ Ring Around the Rosie
+// MPI program that passes messages from node to node
+
 #include <mpi.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -7,7 +10,9 @@
 
 int main(int argc, char** argv) {
 
-	const int SIZES[12] = {1000, 50000, 100000, 200000, 300000, 400000, 500000, 600000, 700000, 800000, 900000, 1000000};
+	// List of sizes
+	const int SIZES[12] = {1000, 50000, 100000, 200000, 300000,
+	400000, 500000, 600000, 700000, 800000, 900000, 1000000};
 
 	// Rank
 	int world_rank;
@@ -20,6 +25,8 @@ int main(int argc, char** argv) {
 	// Slowest time
 	double slowest;
 	// Array of times
+	double raw[TRIALS];
+	// Array of calculated times
 	double times[TRIALS];
 	// Message to be passed around
 	double* message = (double*)malloc(MILLION * sizeof(double));
@@ -37,18 +44,28 @@ int main(int argc, char** argv) {
 		MPI_Abort(MPI_COMM_WORLD, 1);
 	}
 
+	// If master print header
+	if (world_rank == 0) {
+		printf("Ethan Harvey ~ COMP 233 ~ Ring Around the Rosie\n\n");
+		printf("Bytes,Fastest,Slowest,Average\n");
+	}
+
+	// Loop through each size
 	int size;
 	for (size = 0; size < 12; size++) {
 
+		// Run number of trials specified
 		int trial;
 		for (trial = 0; trial < TRIALS; trial++) {
 
+			// If master
 			if (world_rank == 0) {
 				int i;
 				for (i = 0; i < SIZES[size]; i++) {
 					message[i] = SIZES[size] + trial;
 				}
 
+				// Start timer
 				start = MPI_Wtime();
 
 				MPI_Send(
@@ -68,20 +85,18 @@ int main(int argc, char** argv) {
 					MPI_COMM_WORLD, // communicator
 					MPI_STATUS_IGNORE);
 
+				// End timer
 				stop = MPI_Wtime();
 				total = stop - start;
 
 				for (i = 0; i < SIZES[size]; i++) {
-					/*
+					// Check to make sure the message is the same
 					if (message[i] != SIZES[size] + trial) {
-						// TODO: Make sure messages are the same
-						printf("Messages are not the same")
+						printf("Messages are not the same");
 					}
-					*/
-					// Make sure the messages are the same
 				}
 
-				times[trial] = total/world_size;
+				raw[trial] = total;
 			}
 			else {
 
@@ -112,6 +127,7 @@ int main(int argc, char** argv) {
 			// Set fastest, slowest, and average
 			int i;
 			for (i = 0; i < TRIALS; i++) {
+				times[i] = raw[i]/world_size;
 				if (times[i] > fastest) {
 					fastest = times[i];
 				}
@@ -120,13 +136,22 @@ int main(int argc, char** argv) {
 				}
 				average += times[i];
 			}
-			// TODO: Bandwidth and Latency stuff
+			// Divide total by number of trials
 			average = average/TRIALS;
-			printf("%d, %f, %f, %f\n", 8*SIZES[size] ,fastest, slowest, average);
+
+			// Print 
+			printf("%d,%f,%f,%f\n", 8*SIZES[size], fastest, slowest, average);
 		}
 	}
-
+	
+	// Free message
 	free(message);
+
+	// If master print footer
+	if (world_rank == 0) {
+		printf("\n<<< Normal Termination >>>");
+	}
+
 	MPI_Finalize();
 	return 0;
 }
